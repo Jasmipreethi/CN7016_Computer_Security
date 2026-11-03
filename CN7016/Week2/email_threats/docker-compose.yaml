@@ -1,0 +1,73 @@
+services:
+  mail-server:
+    image: jcalonso/mailhog:latest
+    container_name: mail-server
+    ports:
+      - "8025:8025"
+    networks:
+      phish-net:
+        ipv4_address: 10.7.0.10
+        aliases:
+          - mail.isp.net  
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "1025"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  phishing-server:
+    image: httpd:alpine
+    container_name: phishing-server
+    volumes:
+      - ./web:/usr/local/apache2/htdocs/
+    networks:
+      phish-net:
+        ipv4_address: 10.7.0.20
+        aliases:
+          - pix.example.com
+          - example.com
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "80"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      mail-server:
+        condition: service_healthy
+
+  attacker-node:
+    image: debian:stable-slim
+    container_name: attacker-node
+    tty: true
+    command: sh -c "apt-get update && apt-get install -y swaks curl jq && sh"
+    networks:
+      phish-net:
+        ipv4_address: 10.7.0.30
+    depends_on:
+      mail-server:
+        condition: service_healthy
+      phishing-server:
+        condition: service_healthy
+
+  victim-desktop:
+    image: lscr.io/linuxserver/webtop:latest
+    container_name: victim-desktop
+    privileged: true 
+    ports:
+      - "3000:3000"
+    networks:
+      phish-net:
+        ipv4_address: 10.7.0.40
+    depends_on:
+      mail-server:
+        condition: service_healthy
+      phishing-server:
+        condition: service_healthy
+
+networks:
+  phish-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.7.0.0/24
+
